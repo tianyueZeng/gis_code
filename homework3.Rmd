@@ -1,0 +1,294 @@
+---
+title: "homework3"
+output: html_document
+date: "2026-10-24"
+---
+
+
+## 主题：坐标系和投影坐标系转换+tif的应用
+## 国家边界处理
+```{r}
+library(sf) 
+library(here)
+st_layers("homework3/gadm41_GBR.gpkg")
+```
+```{r}
+library(sf)
+library(tidyverse)
+GBRoutline <- st_read("homework3/gadm41_GBR.gpkg", 
+                      layer='ADM_ADM_0')
+```
+```{r}
+print(GBRoutline)
+```
+
+## tif处理
+```{r}
+library(terra)
+jan01<-terra::rast("homework3/wc2.1_2.5m_prec_UKESM1-0-LL_ssp126_2081-2100.tif")
+# have a look at the raster layer jan
+jan01
+```
+```{r}
+library(terra)
+jan02<-terra::rast("homework3/wc2.1_2.5m_prec_UKESM1-0-LL_ssp585_2081-2100.tif")
+# have a look at the raster layer jan
+jan02
+```
+```{r}
+plot(jan01)
+plot(jan02)
+```
+## 数据加载
+```{r}
+# look in our folder, find the files that end with .tif and 
+library(fs)
+dir_info("homework3/") 
+```
+```{r}
+library(tidyverse)
+listfiles<-dir_info("homework3/") %>%
+  filter(str_detect(path, ".tif")) %>%
+  dplyr::select(path)%>%
+  pull()
+
+#have a look at the file names 
+listfiles
+```
+
+### 将两个tif存储为为不同的file变量，126+585
+```{r}
+library(tidyverse)
+library(fs)
+
+listfiles <- dir_info("homework3/") %>%
+  filter(str_detect(path, fixed(".tif"))) %>%
+  select(path) %>%
+  pull()
+
+# SSP126
+file126 <- listfiles[str_detect(listfiles, fixed("ssp126_2081-2100.tif"))]
+
+# SSP585
+file585 <- listfiles[str_detect(listfiles, fixed("ssp585_2081-2100.tif"))]
+```
+
+### nylr可以反映tif中的图层数量
+```{r}
+## SSPS26
+library(terra)
+worldclimtemp126 <- terra::rast(file126)
+
+# mount of nlyr
+terra::nlyr(worldclimtemp126)
+# name of nlyr
+names(worldclimtemp126)
+  
+#have a look at the raster stack
+worldclimtemp126
+```
+```{r}
+## SSPS585
+library(terra)
+worldclimtemp585 <- terra::rast(file585)
+
+# mount of nlyr
+terra::nlyr(worldclimtemp585)
+# name of nlyr
+names(worldclimtemp585)
+  
+#have a look at the raster stack
+worldclimtemp585
+```
+
+检查单独栅格图层是否为需要的
+```{r}
+# access the january layer 126
+worldclimtemp126[[1]]
+
+# access the january layer 585
+worldclimtemp585[[1]]
+```
+
+### 筛选出两个栅格
+```{r}
+library(tidyterra)
+
+# SSP126
+worldclimtemp126 %>%
+  tidyterra::select(wc2.1_2.5m_prec_01)
+# SSP585
+worldclimtemp585 %>%
+  tidyterra::select(wc2.1_2.5m_prec_01)
+```
+
+### 按月份重命名图层
+```{r}
+# SSP126
+month <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+names(worldclimtemp126) <- month
+# SSP585
+month <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+names(worldclimtemp585) <- month
+
+# check
+worldclimtemp126
+worldclimtemp585
+```
+```{r}
+# 验证
+worldclimtemp126$Jan
+```
+
+## 导入城市points数据并筛选UK城市
+```{r}
+library(tidyverse)
+
+# 1. Import the CSV file
+World_Cities <- read_csv("homework3/World_Cities.csv")
+
+# 2. Filter UK cities and select X and Y
+UK_Cities <- World_Cities %>%
+  filter(FIPS_CNTRY == "UK") %>%
+  select(X, Y, GMI_ADMIN, CITY_NAME)
+
+# 3. Save as a new CSV file
+write_csv(UK_Cities, "homework3/UK_Cities.csv")
+
+# view csv
+head(UK_Cities)
+```
+
+### 关键：转化坐标系，将投影坐标系转化为地理坐标系
+```{r}
+# 读取 CSV
+cities <- read.csv("homework3/UK_Cities.csv")
+
+# 将 X、Y 创建为空间点，指定原始 CRS 为 EPSG:3857
+cities_sf <- st_as_sf(
+  cities,
+  coords = c("X", "Y"),
+  crs = 3857,
+  remove = FALSE
+)
+
+# 转换为 WGS 84
+cities_wgs84 <- st_transform(cities_sf, 4326)
+
+# 提取经纬度
+coords <- st_coordinates(cities_wgs84)
+
+# 添加经纬度列
+cities$Longitude <- coords[, 1]
+cities$Latitude <- coords[, 2]
+
+# 保存转换后的 CSV
+write.csv(cities, "homework3/UK_Cities_WGS84.csv", row.names = FALSE)
+
+# 读取新的文件
+UK_Cities_WGS84 <- read.csv("homework3/UK_Cities_WGS84.csv")
+
+# 删除原本的投影坐标系
+UK_Cities_WGS84 <- UK_Cities_WGS84 %>%
+  select(Longitude, Latitude, CITY_NAME)
+
+write.csv(
+  UK_Cities_WGS84,
+  "UK_Cities_WGS84.csv",
+  row.names = FALSE
+)
+```
+
+add the points
+terra::extract() 默认将前两列作为坐标，因此需要确保 X /Lon在第一列（经度），Y /Lat在第二列（纬度）
+```{r}
+## Extract rain data for all UK cities
+UK_Cities <- read_csv("homework3/UK_Cities_WGS84.csv")
+
+samples <- data.frame(
+  lon = UK_Cities$Longitude,
+  lat = UK_Cities$Latitude
+)
+
+## 保留城市名，并使用 as_tibble() 将提取结果转换为 tibble
+# SSP126
+UKcityramp01 <- terra::extract(worldclimtemp126, samples) %>%
+  as_tibble() %>%
+  add_column(site = UK_Cities_WGS84$CITY_NAME, .before = "Jan")
+
+# SSP585
+UKcityramp02 <- terra::extract(worldclimtemp585, samples) %>%
+  as_tibble() %>%
+  add_column(site = UK_Cities_WGS84$CITY_NAME, .before = "Jan")
+```
+
+## 已有数据测试
+```{r}
+Londonramp <- UKcityramp01 %>%
+  filter(site=="London")
+```
+
+```{r}
+# 绘制直方图
+hist(as.numeric(Londonramp))
+```
+
+## 全国图绘制
+```{r}
+## 加载outline
+plot(GBRoutline$geom)
+```
+
+### 坐标系检查
+```{r}
+# check
+print(GBRoutline)
+```
+
+```{r}
+#this works nicely for rasters
+crs(worldclimtemp126)
+crs(worldclimtemp585)
+```
+
+```{r}
+# 126
+GBRramp <- GBRoutline %>%
+  # now crop our temp data to the extent
+  terra::crop(worldclimtemp126,.)
+
+# plot the output
+plot(GBRramp)
+```
+
+```{r}
+# 585
+GBRramp02 <- GBRoutline %>%
+  # now crop our temp data to the extent
+  terra::crop(worldclimtemp585,.)
+
+# plot the output
+plot(GBRramp02)
+```
+
+### tif数据分析的关键：我们需要将光栅变成数据帧（或tibble）
+
+```{r}
+exactGBR<-terra::mask(GBRramp, GBRoutline)
+```
+
+```{r}
+#subset using the known location of the raster
+hist(exactGBR[[3]], col="red", main ="March rain")
+```
+
+```{r}
+exactGBRdf <- exactGBR %>%
+  as.data.frame()
+```
+
+## 显示126和585之间的降雨差

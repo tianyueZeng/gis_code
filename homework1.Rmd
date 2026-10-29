@@ -1,0 +1,91 @@
+---
+title: "homework"
+output: html_document
+date: "2026-10-08"
+---
+
+
+## 数据导入
+```{r}
+library(tidyverse)
+
+mycsv <- read_csv("homework1/employee2018.csv")  
+```
+
+## 边界导入
+```{r}
+library(sf)
+# my data is within a prac1_data folder.
+shape <- st_read("homework1/statsnz-territorial-authority-2018-generalised-SHP/territorial-authority-2018-generalised.shp")
+
+# dTolerance is the distance in which any “wiggles” will be straightened
+shape_simple <- st_simplify(shape, dTolerance = 1000)
+```
+
+```{r}
+## 数据检查
+summary(shape)
+summary(shape_simple)
+```
+
+```{r}
+## 边界可视化并检查
+library(sf)
+
+shape_simple %>% 
+  st_geometry() %>%
+  plot()
+```
+
+```{r}
+names(shape)
+names(mycsv)
+```
+
+```{r}
+shape2 <- shape_simple%>%
+  merge(.,
+        mycsv,
+        by.x="TA2018_V_1", 
+        by.y="Area_Description")
+```
+
+```{r}
+shape2%>%
+  head(., n=10)
+```
+
+```{r}
+names(shape2)
+```
+
+
+```{r}
+library(tmap)
+tmap_mode("plot")
+# change the fill to your column name if different
+shape2 %>%
+  qtm(.,fill = "Paid employee")
+```
+```{r}
+shape2 %>%
+  st_write(
+    "homework1/paidemployee.gpkg",
+    layer = "Newzeland_paidemployee",
+    delete_dsn = TRUE
+  )
+```
+
+```{r}
+library(readr)
+library(RSQLite)
+
+con <- dbConnect(
+  RSQLite::SQLite(),
+  dbname = "homework1/paidemployee.gpkg"
+)
+
+con %>%
+  dbListTables()
+```
+

@@ -1,0 +1,211 @@
+---
+title: "homework2"
+output: html_document
+date: "2026-10-15"
+---
+
+
+## 主题：将非空间数据与空间数据结合并进行处理，
+## 在开始之前先打开csv和shp，看下原始数据有哪些东西，然后列出大概的计划再行动
+## 将数据链接到地图数据上的时候用ID更好，只要两边id的class一样就行了，不一定要都是数字
+## 一定要数字格式可以用代码转换
+
+# 数据处理
+```{r}
+library(tidyverse)
+
+StudentData <- read_csv(
+  "homework2/Student_data.csv",
+  locale = locale(encoding = "latin1"),
+  na = c("", "NA", "NULL", "n/a")
+)
+```
+```{r}
+class(StudentData)
+```
+
+```{r}
+# 检查 StudentData 中每一列的数据类型，并将结果整理成一个长格式的数据框 Datatypelist
+Datatypelist <- StudentData %>% 
+  summarise_all(class) %>%
+  pivot_longer(everything(), 
+               names_to="All_variables", 
+               values_to="Variable_class")
+
+Datatypelist
+```
+
+```{r}
+CountyData <- StudentData %>%
+  filter(
+    County != "Multiple",
+    TestSubject == "Science",
+    StudentGroup == "All Students",
+    GradeLevel == "All Grades"
+  )
+
+## How many lines
+nrow(CountyData)
+```
+
+```{r}
+# 检查CountyData的数据类型
+Datatypelist <- CountyData %>% 
+  summarise_all(class) %>%
+  pivot_longer(everything(), 
+               names_to="All_variables", 
+               values_to="Variable_class")
+
+Datatypelist
+```
+
+```{r}
+#select columns 3,20 and 22
+CountyData_Student<-CountyData %>%
+  dplyr::select(c(3,20,22))
+```
+
+
+# 导入地图
+```{r}
+library(sf)
+library(tmap)
+library(tmaptools)
+
+washington_map <- st_read ("homework2/Week 2 Homework boundaries-20261015/Washington_Counties_with_Natural_Shoreline___washsh_area.shp")
+View(washington_map)
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(washington_map) +
+  geom_sf(fill = "lightblue", color = "black") +
+  labs(title = "Washington Counties") +
+  theme_minimal()
+```
+
+
+# 合并并计算数据
+```{r}
+library(dplyr)
+
+CountyData_Student_Summary <- CountyData_Student %>%
+  group_by(County) %>%
+  summarise(
+    `Count of Students Expected to Test` =
+      sum(`Count of Students Expected to Test`, na.rm = TRUE),
+    CountMetStandard =
+      sum(CountMetStandard, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+library(dplyr)
+
+Student_Performance <- CountyData_Student_Summary %>%
+  mutate(
+    PassRate = CountMetStandard /
+      `Count of Students Expected to Test`
+  ) %>%
+  select(
+    County,
+    `Count of Students Expected to Test`,
+    CountMetStandard,
+    PassRate
+  ) %>%
+  arrange(desc(PassRate))
+```
+
+# 华盛顿平均通过率
+```{r}
+CountyData_Student %>%
+  summarise(
+    TotalExpected = sum(
+      `Count of Students Expected to Test`,
+      na.rm = TRUE
+    ),
+    TotalMetStandard = sum(
+      CountMetStandard,
+      na.rm = TRUE
+    ),
+    OverallProportion = TotalMetStandard / TotalExpected
+  )
+```
+
+# 差值diff+标准化z-score
+```{r}
+library(dplyr)
+
+OverallRate <- 0.4727245
+
+Student_Performance <- Student_Performance %>%
+  mutate(
+    Diff = PassRate - OverallRate,
+    NormalisedRate = PassRate / OverallRate
+  ) %>%
+  arrange(desc(NormalisedRate))
+```
+
+
+# 合并
+```{r}
+library(dplyr)
+library(sf)
+
+washington_map <- washington_map %>%
+  left_join(
+    Student_Performance %>%
+      mutate(COUNTYLABE = County) %>%
+      select(COUNTYLABE, PassRate, Diff, NormalisedRate),
+    by = "COUNTYLABE"
+  )
+```
+
+```{r}
+names(washington_map)
+
+head(
+  st_drop_geometry(washington_map)
+)
+```
+
+# pass rate 的图
+```{r}
+library(ggplot2)
+
+ggplot(washington_map) +
+  geom_sf(aes(fill = PassRate), color = "white") +
+  scale_fill_viridis_c(
+    name = "Pass Rate",
+    na.value = "grey80"
+  ) +
+  labs(title = "Student Pass Rate by County") +
+  theme_minimal()
+```
+
+与平均值的差值分布图
+```{r}
+ggplot(washington_map) +
+  geom_sf(
+    aes(fill = Diff),
+    color = "white",
+    linewidth = 0.2
+  ) +
+  scale_fill_gradient2(
+    low = "#66A182",      # 绿色：低于平均水平
+    mid = "#F5F0E8",      # 米白色：接近平均水平
+    high = "#8064A2",     # 紫色：高于平均水平
+    midpoint = 0,
+    name = "Diff",
+    na.value = "grey85"
+  ) +
+  labs(
+    title = "Differant Student Pass Rate Compare With Average",
+    subtitle = "0 = Overall Average",
+    caption = "Grey areas indicate missing data"
+  ) +
+  theme_minimal()
+```
+
