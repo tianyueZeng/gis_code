@@ -101,9 +101,9 @@ ggplot(GlobalShape1) +
   geom_sf(aes(fill = Diff_agg), color = "white") +
   scale_fill_gradient2(
     name = "Diff in 2010-2019",
-    low = "#0097B2",
-    mid = "#FD97B2",
-    high = "#919",
+    low = "purple",
+    mid = "white",
+    high = "green",
     na.value = "grey80"
   ) +
   labs(title = "Global Gender Inequality Index") +
