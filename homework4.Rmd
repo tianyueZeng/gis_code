@@ -13,41 +13,28 @@ step4 select a certain area
 # packages
 library(tidyverse)
 library(sf)
-library(tmap)
-library(fs)
-library(here)
 library(countrycode)
 ```
 # loading Data
 ```{r}
-# data frame
-mycsv <- read_csv("homework4/1990_2023_Composite_indices_complete_time_series.csv")
+# csv
 mycsv <- read_csv(
   "homework4/1990_2023_Composite_indices_complete_time_series.csv",
   locale = locale(encoding = "latin1"),
   na = c("", "NA", "NULL", "n/a")
 )
-
-Datatypelist <- mycsv %>%
-  summarise_all(class) %>%
-  pivot_longer(
-    everything(),
-    names_to = "All_variables",
-    values_to = "Variable_class"
-  )
-Datatypelist
 ```
 ```{r}
-# vector
+# GeoJSON
 GlobalShape <- st_read("homework4/World_Countries_(Generalized)_2173680399808997149.geojson")
 
-plot(GlobalShape)
 ```
 
 # munging Data
 ```{r}
+# select column
 GLOBALGenderInequality_index <- mycsv %>%
-  dplyr::select(c(1:2,636:669))
+  dplyr::select(c(iso3, country, gii_2010, gii_2019))
 ```
 
 ```{r}
@@ -55,15 +42,6 @@ GLOBALGenderInequality_index <- mycsv %>%
 GLOBALGenderInequality_index <- GLOBALGenderInequality_index %>%
   mutate(Diff10_19 = gii_2019 - gii_2010,
          Diff_agg = (gii_2019 - gii_2010)*100)
-
-gii_Datatypelist <- GLOBALGenderInequality_index %>%
-  summarise_all(class) %>%
-  pivot_longer(
-    everything(),
-    names_to = "All_variables",
-    values_to = "Variable_class"
-  )
-gii_Datatypelist
 ```
 
 ```{r}
@@ -81,11 +59,9 @@ GlobalShape <- GlobalShape %>%
 ```{r}
 # connect
 GlobalShape1 <- GlobalShape %>%
-  merge(
-    .,
+  left_join(
     GLOBALGenderInequality_index,
-    by.x = "iso3c",
-    by.y = "iso3"
+    by = c("iso3c" = "iso3")
   )
 
 GlobalShape1 <- GlobalShape1 %>%
