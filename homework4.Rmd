@@ -14,6 +14,7 @@ step4 select a certain area
 library(tidyverse)
 library(sf)
 library(countrycode)
+library(tmap)
 ```
 # loading Data
 ```{r}
@@ -68,18 +69,20 @@ GlobalShape1 <- GlobalShape1 %>%
   select(-c(ISO,COUNTRYAFF,AFF_ISO,country))
 ```
 
-# test and plot with diff
+# plot with diff
 ```{r}
-ggplot(GlobalShape1) +
-  geom_sf(aes(fill = Diff_agg), color = "white") +
-  scale_fill_gradient2(
-    name = "Diff in 2010-2019",
-    low = "purple",
-    mid = "white",
-    high = "green",
-    na.value = "grey80"
-  ) +
-  labs(title = "Global Gender Inequality Index") +
-  theme_minimal()
+tm1 <- tm_shape(GlobalShape1) + 
+  tm_polygons(
+    fill = "Diff_agg",
+    col = "white", 
+    lwd = 0.5,
+    lty = "dashed",
+    fill.chart = tm_chart_violin(),
+    fill.scale = tm_scale_intervals(
+      values = "brewer.bu_pu",
+      n = 5,
+      style = "jenks"))
+
+tm1
 ```
 
